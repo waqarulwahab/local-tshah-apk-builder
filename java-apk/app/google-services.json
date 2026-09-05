@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "315659363294",
+    "project_id": "t-shah",
+    "storage_bucket": "t-shah.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:315659363294:android:8dc480898606262c73734f",
+        "android_client_info": {
+          "package_name": "come.tshah.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFHuaLfvk6VndaymNzzisuiwRbSgRHAos"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

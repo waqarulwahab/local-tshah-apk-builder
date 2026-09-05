@@ -1,4 +1,4 @@
-name: Build APK (local-tshah v2)
+name: Build APK (Java v2)
 
 on:
   workflow_dispatch:
@@ -46,25 +46,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Java ──────────────────────────────────────────────────────────────
+      # ── 2. Java 17 ───────────────────────────────────────────────────────────
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # ── 3. Flutter ───────────────────────────────────────────────────────────
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.2'
-          cache: true
-
-      # ── 4. Python deps ───────────────────────────────────────────────────────
-      - name: Install Python deps
-        run: pip install pillow -q
-
-      # ── 5. Status → building (webhook) ───────────────────────────────────────
+      # ── 3. Status → building ─────────────────────────────────────────────────
       - name: Notify building
         run: |
           curl -sf -X POST "${{ inputs.webhook_url }}" \
@@ -72,96 +61,71 @@ jobs:
             -d "{\"buildId\":\"${{ inputs.build_id }}\",\"status\":\"building\"}" \
             || echo "Webhook ping failed (non-fatal)"
 
-      # ── 6. Process icon (base64 from env) ────────────────────────────────────
-      - name: Process icon
+      # ── 4. Restore stable debug keystore ─────────────────────────────────────
+      - name: Restore debug keystore
         env:
-          ICON_B64: ${{ secrets.DEFAULT_ICON_B64 }}
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -z "$ICON_B64" ]; then echo "No icon — using default"; exit 0; fi
-          echo "$ICON_B64" | base64 -d > /tmp/icon.png
-          python3 - <<'PY'
-          from PIL import Image
-          import os
+          mkdir -p "$HOME/.android"
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
+            echo "Stable keystore restored."
+          else
+            echo "::warning::DEBUG_KEYSTORE_BASE64 not set — runner default key will be used (APK signature changes each build)"
+          fi
 
-          SIZES = {
-              'mipmap-mdpi':    48,
-              'mipmap-hdpi':    72,
-              'mipmap-xhdpi':   96,
-              'mipmap-xxhdpi':  144,
-              'mipmap-xxxhdpi': 192,
-          }
-          BASE = 'android/app/src/main/res'
-          img = Image.open('/tmp/icon.png').convert('RGBA')
+      # ── 5. Fetch Firebase config from backend ────────────────────────────────
+      - name: Fetch Firebase config
+        env:
+          INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
+        working-directory: java-apk
+        run: |
+          ASSETS=$(curl -sf \
+            -H "x-internal-secret: $INTERNAL_SECRET" \
+            "${{ inputs.backend_url }}/api/client/builds/${{ inputs.build_id }}/assets")
+          echo "$ASSETS" | python3 -c "
+          import sys, json, base64
+          d = json.load(sys.stdin)
+          fc = d.get('firebase_config', '')
+          open('app/google-services.json', 'w').write(base64.b64decode(fc).decode())
+          print('google-services.json written.')
+          "
 
-          for folder, size in SIZES.items():
-              bg = Image.new('RGBA', (size, size), (255,255,255,255))
-              resized = img.resize((size, size), Image.LANCZOS)
-              bg.paste(resized, mask=resized.split()[3])
-              bg.convert('RGB').save(f'{BASE}/{folder}/ic_launcher.png')
-          print('Icons written.')
-          PY
-
-      # ── 7. Patch app name ────────────────────────────────────────────────────
+      # ── 6. Patch app display name ─────────────────────────────────────────────
       - name: Patch app name
         env:
           APP_TITLE: ${{ inputs.app_name }}
+        working-directory: java-apk
         run: |
           python3 - <<'PY'
           import os, re
           from xml.sax.saxutils import escape
           title = os.environ['APP_TITLE']
           safe  = escape(title, {'"': '&quot;'})
-          path  = 'android/app/src/main/AndroidManifest.xml'
+          path  = 'app/src/main/AndroidManifest.xml'
           with open(path) as f: xml = f.read()
-          xml = re.sub(r'(<application\b[^>]*\bandroid:label=")[^"]*(")',
-                       lambda m: m.group(1) + safe + m.group(2), xml, count=1)
-          xml = re.sub(r'(\.LauncherAlias"[^>]*\bandroid:label=")[^"]*(")',
-                       lambda m: m.group(1) + safe + m.group(2), xml)
+          # Patch only the <application android:label="..."> attribute
+          xml = re.sub(
+              r'(<application\b[^>]*\bandroid:label=")[^"]*(")',
+              lambda m: m.group(1) + safe + m.group(2),
+              xml, count=1
+          )
           with open(path, 'w') as f: f.write(xml)
           print(f'App name patched: {title}')
           PY
 
-      # ── 8. Patch config.dart ─────────────────────────────────────────────────
-      - name: Patch config.dart
-        env:
-          CHANNEL_ID:  ${{ inputs.channel_id }}
-          BACKEND_URL: ${{ inputs.backend_url }}
-        run: |
-          python3 - <<'PY'
-          import os, re
-          channel_id  = os.environ['CHANNEL_ID']
-          backend_url = os.environ['BACKEND_URL']
-          path = 'lib/config.dart'
-          with open(path) as f: content = f.read()
-          content = re.sub(r"(static const String channelId = ')[^']*(')",
-                           lambda m: m.group(1) + channel_id  + m.group(2), content, count=1)
-          content = re.sub(r"(static const String targetUrl = ')[^']*(')",
-                           lambda m: m.group(1) + backend_url + m.group(2), content, count=1)
-          with open(path, 'w') as f: f.write(content)
-          print(f'Patched: channelId={channel_id}, targetUrl={backend_url}')
-          PY
-
-      # ── 9. Flutter pub get + build ───────────────────────────────────────────
-      - name: Flutter pub get
-        run: flutter pub get
-
+      # ── 7. Build release APK ─────────────────────────────────────────────────
       - name: Build release APK
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        working-directory: java-apk
         run: |
-          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            mkdir -p "$HOME/.android"
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
-            export DEBUG_KEYSTORE_FILE="$RUNNER_TEMP/debug.keystore"
-            echo "Stable debug keystore restored."
-          else
-            echo "::warning::DEBUG_KEYSTORE_BASE64 not set — using runner default key"
-          fi
-          sed -i -E 's/-Xmx8G/-Xmx5G/; s/MaxMetaspaceSize=4G/MaxMetaspaceSize=1G/' android/gradle.properties || true
-          flutter build apk --release
+          chmod +x gradlew
+          ./gradlew assembleRelease \
+            -PCHANNEL_ID="${{ inputs.channel_id }}" \
+            -PBACKEND_URL="${{ inputs.backend_url }}" \
+            -PAPP_URL="${{ inputs.app_url }}" \
+            --no-daemon
 
-      # ── 10. Upload APK to GitHub Release ────────────────────────────────────
+      # ── 8. Upload APK to GitHub Release ──────────────────────────────────────
       - name: Upload APK to GitHub Release
         id: release
         env:
@@ -169,19 +133,19 @@ jobs:
           BUILD_ID: ${{ inputs.build_id }}
           APP_NAME: ${{ inputs.app_name }}
         run: |
-          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APK="java-apk/app/build/outputs/apk/release/app-release.apk"
           TAG="build-${BUILD_ID}"
           gh release create "$TAG" "$APK#app.apk" \
             --title "${APP_NAME} (${BUILD_ID})" \
-            --notes "Auto-generated build for tenant: ${{ inputs.channel_id }}" \
+            --notes "Java build — tenant: ${{ inputs.channel_id }}" \
             --repo "$GITHUB_REPOSITORY"
           DOWNLOAD_URL=$(gh release view "$TAG" --json assets \
             --jq '.assets[] | select(.name=="app.apk") | .browserDownloadUrl' \
             --repo "$GITHUB_REPOSITORY")
           echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
-          echo "APK uploaded: $DOWNLOAD_URL"
+          echo "APK URL: $DOWNLOAD_URL"
 
-      # ── 11. Notify webhook → done ────────────────────────────────────────────
+      # ── 9. Notify done ────────────────────────────────────────────────────────
       - name: Notify done
         env:
           WEBHOOK_URL:  ${{ inputs.webhook_url }}
@@ -192,7 +156,7 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"buildId\":\"$BUILD_ID\",\"status\":\"done\",\"downloadUrl\":\"$DOWNLOAD_URL\"}"
 
-      # ── 12. Notify webhook → failed ──────────────────────────────────────────
+      # ── 10. Notify failed ─────────────────────────────────────────────────────
       - name: Notify failed
         if: ${{ failure() || cancelled() }}
         env:
