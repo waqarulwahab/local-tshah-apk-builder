@@ -1,0 +1,35 @@
+# Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.iml
+
+# Android
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/google-services.json
+android/app/release/
+android/app/debug/
+
+# iOS
+ios/.symlinks/
+ios/.generated/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Credentials
+.env
+*.key
+*.keystore
+*.jks
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store

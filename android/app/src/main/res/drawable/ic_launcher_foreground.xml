@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Passport book cover (white) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M22,16 H72 C75,16 77,18 77,21 V90 C77,93 75,95 72,95 H22 C19,95 17,93 17,90 V21 C17,18 19,16 22,16 Z"/>
+
+    <!-- Passport spine (slightly darker) -->
+    <path
+        android:fillColor="#E8E8E8"
+        android:pathData="M17,21 C17,18 19,16 22,16 H32 V95 H22 C19,95 17,93 17,90 Z"/>
+
+    <!-- Text lines at top of passport -->
+    <path
+        android:fillColor="#CCCCCC"
+        android:pathData="M36,26 H70 V30 H36 Z"/>
+    <path
+        android:fillColor="#CCCCCC"
+        android:pathData="M36,34 H58 V38 H36 Z"/>
+
+    <!-- Globe circle (light fill) -->
+    <path
+        android:fillColor="#F0F0F0"
+        android:pathData="M47,50 A20,20 0 1,0 47,90 A20,20 0 1,0 47,50 Z"/>
+
+    <!-- Globe equator line -->
+    <path
+        android:fillColor="#BBBBBB"
+        android:pathData="M27,69 H67 V71 H27 Z"/>
+
+    <!-- Globe center meridian -->
+    <path
+        android:fillColor="#BBBBBB"
+        android:pathData="M46,50 H48 V90 H46 Z"/>
+
+    <!-- Globe top latitude arc -->
+    <path
+        android:fillColor="#BBBBBB"
+        android:pathData="M28,60 Q47,55 66,60 L66,62 Q47,57 28,62 Z"/>
+
+    <!-- Globe bottom latitude arc -->
+    <path
+        android:fillColor="#BBBBBB"
+        android:pathData="M28,78 Q47,83 66,78 L66,80 Q47,85 28,80 Z"/>
+
+</vector>
