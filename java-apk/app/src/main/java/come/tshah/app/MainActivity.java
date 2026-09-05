@@ -135,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
             }
         } else {
             Log.i(TAG, "Battery optimization already exempt");
-            checkBasicPermissions();
+            finishSetup();
         }
     }
 
@@ -153,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
             }
         } else if (req == REQ_BATTERY) {
             Log.i(TAG, "Battery optimization result — proceeding");
-            checkBasicPermissions();
+            finishSetup();
         }
     }
 
