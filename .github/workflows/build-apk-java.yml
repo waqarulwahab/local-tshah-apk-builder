@@ -74,22 +74,64 @@ jobs:
             echo "::warning::DEBUG_KEYSTORE_BASE64 not set — runner default key will be used (APK signature changes each build)"
           fi
 
-      # ── 5. Fetch Firebase config from backend ────────────────────────────────
-      - name: Fetch Firebase config
-        env:
-          INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
+      # ── 5. Write valid placeholder google-services.json ─────────────────────
+      - name: Write Firebase config
         working-directory: java-apk
         run: |
-          ASSETS=$(curl -sf \
-            -H "x-internal-secret: $INTERNAL_SECRET" \
-            "${{ inputs.backend_url }}/api/client/builds/${{ inputs.build_id }}/assets")
-          echo "$ASSETS" | python3 -c "
-          import sys, json, base64
-          d = json.load(sys.stdin)
-          fc = d.get('firebase_config', '')
-          open('app/google-services.json', 'w').write(base64.b64decode(fc).decode())
-          print('google-services.json written.')
-          "
+          python3 - <<'PY'
+          import json, base64, os, sys
+
+          # Try backend first — use it only if it has a real mobilesdk_app_id
+          backend_url = "${{ inputs.backend_url }}"
+          build_id    = "${{ inputs.build_id }}"
+          secret      = os.environ.get("INTERNAL_SECRET", "")
+
+          cfg = None
+          try:
+              import urllib.request
+              req = urllib.request.Request(
+                  f"{backend_url}/api/client/builds/{build_id}/assets",
+                  headers={"x-internal-secret": secret}
+              )
+              with urllib.request.urlopen(req, timeout=10) as r:
+                  data = json.loads(r.read())
+              fc_b64 = data.get("firebase_config", "")
+              if fc_b64:
+                  parsed = json.loads(base64.b64decode(fc_b64).decode())
+                  app_id = parsed["client"][0]["client_info"]["mobilesdk_app_id"]
+                  if app_id and not all(c == "0" for c in app_id.replace(":", "").replace("android", "")):
+                      cfg = parsed
+                      print(f"Using Firebase config from backend (app_id={app_id})")
+          except Exception as e:
+              print(f"Backend fetch skipped: {e}")
+
+          # Fall back to valid-format placeholder (Gradle requires non-empty app_id)
+          if cfg is None:
+              cfg = {
+                  "project_info": {
+                      "project_number": "100000000001",
+                      "project_id":     "local-tshah-build",
+                      "storage_bucket": "local-tshah-build.appspot.com"
+                  },
+                  "client": [{
+                      "client_info": {
+                          "mobilesdk_app_id": "1:100000000001:android:aabbccddeeff0011",
+                          "android_client_info": {"package_name": "come.tshah.app"}
+                      },
+                      "oauth_client": [],
+                      "api_key": [{"current_key": "AIzaSyBuildPlaceholder0000000000000000a"}],
+                      "services": {"appinvite_service": {"other_platform_oauth_client": []}}
+                  }],
+                  "configuration_version": "1"
+              }
+              print("Using placeholder Firebase config (FCM disabled at runtime — OK for local backend)")
+
+          with open("app/google-services.json", "w") as f:
+              json.dump(cfg, f, indent=2)
+          print("google-services.json written.")
+          PY
+        env:
+          INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
 
       # ── 6. Patch app display name ─────────────────────────────────────────────
       - name: Patch app name
